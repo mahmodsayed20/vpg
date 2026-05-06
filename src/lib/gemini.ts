@@ -1,6 +1,6 @@
 const KEY = import.meta.env.VITE_GEMINI_API_KEY
 
-async function ask(systemPrompt: string, userContent: string): Promise<string> {
+async function ask(system: string, user: string): Promise<string> {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -10,29 +10,24 @@ async function ask(systemPrompt: string, userContent: string): Promise<string> {
       'X-Title':       'Visual Prompt Gallery',
     },
     body: JSON.stringify({
-      model:    'google/gemma-3-4b-it',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userContent },
-      ],
-      max_tokens: 1000,
-      temperature: 0.4,
+      model:       'google/gemma-3-4b-it',
+      messages:    [{ role: 'system', content: system }, { role: 'user', content: user }],
+      max_tokens:  800,
+      temperature: 0.3,
     }),
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('OpenRouter error:', res.status, err)
-    throw new Error(`API error ${res.status}`)
-  }
-
+  if (!res.ok) throw new Error(`API error ${res.status}`)
   const data = await res.json()
   const text = data.choices?.[0]?.message?.content
   if (!text) throw new Error('Empty response')
   return text.trim()
 }
 
-// ─── Main function: takes chips and builds perfect AI prompt ─────────────────
+/**
+ * Takes chips → builds structured JSON → asks Gemini to ENHANCE the JSON
+ * Returns both the raw JSON and the Gemini-enhanced JSON
+ */
 export async function enhancePrompt(
   chips: Array<{ title: string; prompt: string; categoryPath: string[] }>
 ): Promise<{ json: string; aiPrompt: string }> {
@@ -40,48 +35,60 @@ export async function enhancePrompt(
   // Step 1: Build structured JSON from chips
   const structured: Record<string, string> = {}
   for (const chip of chips) {
-    // Use top-level category as the key (Camera, Lighting, etc.)
-    const topCategory = chip.categoryPath[0] ?? 'general'
-    const key = topCategory.toLowerCase().replace(/\s+/g, '_')
-    // If multiple chips in same category, append
-    if (structured[key]) {
-      structured[key] += ', ' + (chip.prompt)
-    } else {
-      structured[key] = chip.prompt
-    }
+    const topKey = (chip.categoryPath[0] ?? 'general').toLowerCase().replace(/\s+/g, '_')
+    structured[topKey] = structured[topKey]
+      ? structured[topKey] + ', ' + chip.prompt
+      : chip.prompt
+  }
+  const rawJson = JSON.stringify(structured, null, 2)
+
+  // Step 2: Gemini enhances the JSON — keeps same keys, improves values only
+  const system = `You are an AI image prompt engineer specializing in structured prompts.
+Your job is to enhance the VALUES of a JSON object — keeping the exact same keys.
+
+STRICT RULES:
+- Return ONLY valid JSON — no markdown, no explanation, no extra text
+- Keep ALL the original keys exactly as they are
+- Only enhance/expand the values with professional terminology
+- Auto-detect scene type (architectural, portrait, logo, interior, etc.)
+- Add relevant quality/style keys if missing (e.g. "quality", "render_style")
+- Values must be comma-separated descriptive English phrases
+- Do NOT change the meaning — only ADD professional detail`
+
+  const user = `Enhance the values in this JSON for AI image generation.
+Return ONLY the enhanced JSON object, nothing else:
+
+${rawJson}`
+
+  let aiJson = rawJson // fallback
+  try {
+    const raw = await ask(system, user)
+    // Clean any markdown fences
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    // Validate it's real JSON
+    JSON.parse(cleaned)
+    aiJson = cleaned
+  } catch (e) {
+    console.error('Gemini JSON parse failed, using raw', e)
+    aiJson = rawJson
   }
 
-  const jsonOutput = JSON.stringify(structured, null, 2)
+  // Step 3: Build flat AI prompt from enhanced JSON (for copy/use)
+  const ORDER = ['style', 'subject', 'camera', 'lighting', 'environment', 'materials', 'people', 'quality', 'render_style']
+  const parsed = JSON.parse(aiJson)
+  const ordered = [
+    ...ORDER.filter(k => parsed[k]).map(k => parsed[k]),
+    ...Object.entries(parsed).filter(([k]) => !ORDER.includes(k)).map(([, v]) => v),
+  ]
+  const aiPrompt = ordered.join(', ')
 
-  // Step 2: Ask Gemini to convert JSON to perfect AI prompt
-  const systemPrompt = `You are an expert AI image generation prompt engineer.
-Your job is to convert a structured JSON of scene elements into a perfect, professional prompt.
-
-Rules:
-- Detect the scene type automatically (architectural, portrait, logo, social media, interior, exterior, etc.)
-- Order elements logically: subject first, then camera, lighting, environment, style, quality
-- Use professional photography/rendering terminology
-- Keep the original values — do NOT invent new elements
-- Make it flow naturally as a single coherent prompt
-- End with quality modifiers appropriate for the scene type
-- Return ONLY the final prompt text, nothing else`
-
-  const userContent = `Convert this scene JSON to a perfect AI image generation prompt:
-
-${jsonOutput}
-
-Return ONLY the prompt text.`
-
-  const aiPrompt = await ask(systemPrompt, userContent)
-
-  return { json: jsonOutput, aiPrompt }
+  return { json: aiJson, aiPrompt }
 }
 
-// ─── Translate Arabic to English ──────────────────────────────────────────────
 export async function translatePrompt(text: string): Promise<string> {
   if (!/[\u0600-\u06FF]/.test(text)) return text
-  return (await ask(
-    'You are a translator. Translate Arabic to professional English for AI image generation.',
-    `Translate this to English. Return ONLY the translation: ${text}`
-  ))
+  return ask(
+    'Translate Arabic to professional English for AI image generation. Return ONLY the translation.',
+    text
+  )
 }
