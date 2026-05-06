@@ -2,17 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Anyone logged in = admin (we control who logs in via Firebase Console)
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == 'drfayz20@gmail.com';
+      return request.auth != null;
     }
 
-    // Categories — anyone can read, only admin can write
     match /categories/{id} {
       allow read:  if true;
       allow write: if isAdmin();
     }
 
-    // Prompt items — anyone can read, only admin can write
     match /promptItems/{id} {
       allow read:  if true;
       allow write: if isAdmin();

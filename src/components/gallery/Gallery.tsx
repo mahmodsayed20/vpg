@@ -99,10 +99,12 @@ export function Gallery() {
       setSelectedIds(prev => { const n = new Set(prev); displayed.slice(s, en + 1).forEach(i => n.add(i.id)); return n })
       return
     }
+    // Only toggle selection if already in selection mode
     if (selectedIds.size > 0) {
       setSelectedIds(prev => { const n = new Set(prev); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n })
       lastSelectedIdx.current = idx
     }
+    // Otherwise card handles its own click (preview)
   }
 
   function handleRightClick(e: React.MouseEvent, item: PromptItem, idx: number) {

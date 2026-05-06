@@ -1,141 +1,102 @@
 import { memo, useState } from 'react'
-import { Plus, Edit2, Trash2, Copy, Eye, Check, X, ExternalLink } from 'lucide-react'
+import { Plus, Edit2, Trash2, Copy, Check, X, ZoomIn } from 'lucide-react'
 import { useStore } from '@/store'
 import { deleteItem, duplicateItem } from '@/lib/db'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import type { PromptItem } from '@/lib/db.types'
 
-// ─── Inline Preview Modal (for guests) ───────────────────────────────────────
-function PreviewOverlay({ item, onClose }: { item: PromptItem; onClose: () => void }) {
+// ─── Card Preview Modal (for guests) ─────────────────────────────────────────
+function CardPreview({ item, onClose }: { item: PromptItem; onClose: () => void }) {
   const { addChip } = useStore()
   const [copied, setCopied] = useState(false)
-  const [justAdded, setJustAdded] = useState(false)
+  const [added, setAdded]   = useState(false)
 
   function handleCopy() {
     navigator.clipboard.writeText(item.prompt)
     setCopied(true)
-    toast.success('تم نسخ المطالبة!')
+    toast.success('تم نسخ المطالبة')
     setTimeout(() => setCopied(false), 2000)
   }
 
   function handleAdd() {
     const result = addChip(item)
     if (result === 'added') {
-      setJustAdded(true)
+      setAdded(true)
       toast.success(`أُضيف: ${item.title}`)
-      setTimeout(() => { setJustAdded(false); onClose() }, 800)
+      setTimeout(() => { setAdded(false); onClose() }, 800)
     } else {
       toast('موجود بالفعل في البانيل', { icon: '⚠️' })
     }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-slide-up flex flex-col sm:flex-row"
+        className="relative rounded-2xl overflow-hidden shadow-2xl animate-slide-up max-w-lg w-full"
         style={{ background: 'var(--bg-secondary)', border: '1px solid var(--bg-border)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Close */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 z-10 p-1.5 rounded-lg transition-colors"
-          style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}
-        >
+        <button onClick={onClose}
+          className="absolute top-3 right-3 z-10 p-1.5 rounded-full"
+          style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
           <X className="w-4 h-4" />
         </button>
 
         {/* Image */}
-        <div className="sm:w-1/2 min-h-48 flex items-center justify-center"
-          style={{ background: 'var(--bg)' }}>
-          {item.imageUrl ? (
+        {item.imageUrl && (
+          <div className="w-full max-h-72 overflow-hidden" style={{ background: 'var(--bg)' }}>
             <img
               src={item.imageUrl}
               alt={item.title}
-              className={clsx(
-                'w-full h-full max-h-[60vh]',
-                item.displayMode === 'cover' ? 'object-cover' : 'object-contain p-4'
-              )}
+              className={clsx('w-full max-h-72', item.displayMode === 'cover' ? 'object-cover' : 'object-contain p-4')}
             />
-          ) : (
-            <div className="text-6xl">🖼</div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Info */}
-        <div className="sm:w-1/2 p-5 flex flex-col gap-4">
-          {/* Title */}
-          <div>
-            <h2 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>
-              {item.title}
-            </h2>
-            {item.categoryPath.length > 0 && (
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                {item.categoryPath.join(' › ')}
-              </p>
-            )}
+        <div className="p-5">
+          <h3 className="font-bold text-lg mb-1" style={{ color: 'var(--text-primary)' }}>{item.title}</h3>
+
+          {item.categoryPath?.length > 0 && (
+            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+              {item.categoryPath.join(' › ')}
+            </p>
+          )}
+
+          {/* Prompt box */}
+          <div className="rounded-xl p-3 mb-4 font-mono text-sm leading-relaxed"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', color: 'var(--text-secondary)' }}>
+            {item.prompt}
           </div>
 
           {/* Tags */}
-          {item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+          {item.tags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-4">
               {item.tags.map(t => (
                 <span key={t} className="text-xs px-2 py-1 rounded-lg"
-                  style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', border: '1px solid var(--bg-border)' }}>
+                  style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
                   {t}
                 </span>
               ))}
             </div>
           )}
 
-          {/* Prompt */}
-          <div className="flex-1">
-            <label className="block text-xs font-semibold uppercase tracking-widest mb-2"
-              style={{ color: 'var(--text-muted)' }}>
-              المطالبة
-            </label>
-            <div className="p-3 rounded-xl text-sm font-mono leading-relaxed"
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--bg-border)',
-                color: 'var(--text-secondary)',
-              }}>
-              {item.prompt}
-            </div>
-          </div>
-
-          {/* Notes */}
-          {item.notes && (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{item.notes}</p>
-          )}
-
           {/* Actions */}
           <div className="flex gap-2">
-            <button
-              onClick={handleCopy}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--bg-border)',
-                color: 'var(--text-primary)',
-              }}
-            >
-              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            <button onClick={handleCopy}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all"
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', color: 'var(--text-primary)' }}>
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               {copied ? 'تم النسخ!' : 'نسخ المطالبة'}
             </button>
-
-            <button
-              onClick={handleAdd}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-              style={{ background: 'var(--accent)', color: 'white' }}
-            >
-              {justAdded ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-              {justAdded ? 'أُضيف!' : 'إضافة للبانيل'}
+            <button onClick={handleAdd}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all text-white"
+              style={{ background: added ? '#22c55e' : 'var(--accent)' }}>
+              {added ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {added ? 'أُضيف!' : 'إضافة للبانيل'}
             </button>
           </div>
         </div>
@@ -160,9 +121,11 @@ export const PromptCard = memo(function PromptCard({
   const { user, addChip, openModal } = useStore()
   const [imgLoaded, setImgLoaded]   = useState(false)
   const [justAdded, setJustAdded]   = useState(false)
-  const [showPreview, setShowPreview] = useState(false)
+  const [preview, setPreview]       = useState(false)
 
-  // + button — always adds to builder
+  const isSmall = imgHeight < 120
+
+  // + button → add to builder
   function handleAddToBuilder(e: React.MouseEvent) {
     e.stopPropagation()
     const result = addChip(item)
@@ -175,15 +138,23 @@ export const PromptCard = memo(function PromptCard({
     }
   }
 
-  // Card click behavior depends on user role
-  function handleCardClick(e: React.MouseEvent) {
-    if (user?.isAdmin) {
-      // Admin: pass to parent for multi-select logic
+  // Card click:
+  // - Guest → open preview modal
+  // - Admin with selection → toggle select
+  // - Admin without selection → open preview
+  function handleClick(e: React.MouseEvent) {
+    // If ctrl/shift → pass to parent for selection
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
       onCardClick?.(e)
-    } else {
-      // Guest: show preview modal on single click
-      setShowPreview(true)
+      return
     }
+    // If admin has active selection → toggle
+    if (onCardClick && selected !== undefined) {
+      onCardClick(e)
+      return
+    }
+    // Default: open preview
+    setPreview(true)
   }
 
   async function handleDelete(e: React.MouseEvent) {
@@ -201,26 +172,26 @@ export const PromptCard = memo(function PromptCard({
     toast.success('تم النسخ')
   }
 
-  const isSmall = imgHeight < 120
-
   return (
     <>
       <div
         className={clsx(
-          'group relative bg-bg-card border-2 rounded-xl overflow-hidden transition-all select-none',
+          'group relative rounded-xl overflow-hidden transition-all select-none cursor-pointer',
           'hover:shadow-lg hover:-translate-y-0.5',
-          selected
-            ? 'border-accent shadow-md'
-            : 'border-bg-border hover:border-accent/40',
-          'animate-fade-in',
-          !user?.isAdmin && 'cursor-pointer' // guests get pointer cursor
+          selected ? 'ring-2 ring-offset-1' : '',
+          'animate-fade-in'
         )}
-        onClick={handleCardClick}
-        onContextMenu={user?.isAdmin ? onRightClick : undefined}
+        style={{
+          background: 'var(--bg-card)',
+          border: selected ? '2px solid var(--accent)' : '2px solid var(--bg-border)',
+          ...(selected ? { '--tw-ring-color': 'var(--accent)' } as any : {}),
+        }}
+        onClick={handleClick}
+        onContextMenu={onRightClick}
       >
-        {/* Selection indicator — admin only */}
+        {/* Selection checkbox */}
         {selected && (
-          <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-md flex items-center justify-center shadow-sm"
+          <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-md flex items-center justify-center shadow-sm pointer-events-none"
             style={{ background: 'var(--accent)' }}>
             <Check className="w-3 h-3 text-white" strokeWidth={3} />
           </div>
@@ -232,63 +203,51 @@ export const PromptCard = memo(function PromptCard({
             <div className="absolute inset-0 animate-skeleton" style={{ background: 'var(--bg-border)' }} />
           )}
           {item.imageUrl ? (
-            <img
-              src={item.imageUrl}
-              alt={item.title}
-              loading="lazy"
+            <img src={item.imageUrl} alt={item.title} loading="lazy"
               onLoad={() => setImgLoaded(true)}
-              className={clsx(
-                'w-full h-full transition-opacity duration-300',
+              className={clsx('w-full h-full transition-opacity duration-300',
                 item.displayMode === 'cover' ? 'object-cover' : 'object-contain p-2',
                 imgLoaded ? 'opacity-100' : 'opacity-0'
-              )}
-            />
+              )} />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-4xl" style={{ color: 'var(--text-muted)' }}>🖼</div>
           )}
 
-          {/* Overlay */}
+          {/* Hover overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
-          {/* Guest hover hint */}
-          {!user?.isAdmin && !isSmall && (
-            <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-              <div className="text-xs text-white text-center py-1 px-2 rounded-lg" style={{ background: 'rgba(0,0,0,0.6)' }}>
-                اضغط لعرض التفاصيل
-              </div>
-            </div>
-          )}
-
-          {/* + ADD button */}
+          {/* ── ADD BUTTON (+ icon) ── */}
           <button
             onClick={handleAddToBuilder}
             className={clsx(
               'absolute z-10 rounded-full flex items-center justify-center transition-all shadow-xl',
               'opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100',
               isSmall
-                ? 'w-7 h-7 right-1.5 bottom-1.5'
-                : 'w-10 h-10 right-2 bottom-2'
+                ? 'w-7 h-7 bottom-1.5 right-1.5'
+                : 'w-10 h-10 bottom-3 right-3'
             )}
-            style={{
-              background: justAdded ? '#22c55e' : 'var(--accent)',
-              color: 'white',
-            }}
+            style={{ background: justAdded ? '#22c55e' : 'var(--accent)' }}
             title="إضافة للبانيل"
           >
             {justAdded
-              ? <Check className={isSmall ? 'w-3 h-3' : 'w-4 h-4'} />
-              : <Plus  className={isSmall ? 'w-3 h-3' : 'w-4 h-4'} />
+              ? <Check className={isSmall ? 'w-3 h-3 text-white' : 'w-4 h-4 text-white'} />
+              : <Plus  className={isSmall ? 'w-3 h-3 text-white' : 'w-4 h-4 text-white'} />
             }
           </button>
 
-          {/* Admin action buttons — top right */}
+          {/* Zoom hint for guest */}
+          {!user && !isSmall && (
+            <div className="absolute bottom-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-white"
+                style={{ background: 'rgba(0,0,0,0.6)' }}>
+                <ZoomIn className="w-3 h-3" /> معاينة
+              </div>
+            </div>
+          )}
+
+          {/* Admin actions */}
           {user?.isAdmin && !isSmall && (
             <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-              <button onClick={e => { e.stopPropagation(); openModal('preview', item) }}
-                className="p-1.5 rounded-lg shadow-sm backdrop-blur"
-                style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--text-secondary)' }}>
-                <Eye className="w-3 h-3" />
-              </button>
               <button onClick={e => { e.stopPropagation(); openModal('item', { edit: item }) }}
                 className="p-1.5 rounded-lg shadow-sm backdrop-blur"
                 style={{ background: 'rgba(255,255,255,0.9)', color: 'var(--text-secondary)' }}>
@@ -311,17 +270,13 @@ export const PromptCard = memo(function PromptCard({
         {/* Title */}
         {!isSmall && (
           <div className="p-2">
-            <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-              {item.title}
-            </p>
+            <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{item.title}</p>
           </div>
         )}
       </div>
 
-      {/* Preview overlay — guests only */}
-      {showPreview && (
-        <PreviewOverlay item={item} onClose={() => setShowPreview(false)} />
-      )}
+      {/* Preview modal */}
+      {preview && <CardPreview item={item} onClose={() => setPreview(false)} />}
     </>
   )
 })
