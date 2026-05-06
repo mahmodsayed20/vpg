@@ -1,76 +1,62 @@
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`
+// Uses OpenRouter as proxy to access Gemini for free
+const OPENROUTER_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
 async function ask(prompt: string): Promise<string> {
-  const res = await fetch(ENDPOINT, {
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${OPENROUTER_KEY}`,
+      'HTTP-Referer':  'https://vpg-woad.vercel.app',
+      'X-Title':       'Visual Prompt Gallery',
+    },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+      model:    'google/gemini-flash-1.5-8b',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1500,
     }),
   })
-  if (!res.ok) throw new Error('Gemini API error')
+
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('OpenRouter error:', res.status, err)
+    throw new Error(`API error ${res.status}`)
+  }
+
   const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const text = data.choices?.[0]?.message?.content
+  if (!text) throw new Error('Empty response')
+  return text.trim()
 }
 
-// ─── Enhance prompt for AI image generation ───────────────────────────────────
 export async function enhancePrompt(rawPrompt: string): Promise<string> {
   return ask(
     `You are an expert AI image generation prompt engineer.
-Enhance the following prompt to be more detailed, vivid, and effective for AI image generation tools like Midjourney, DALL-E, or Stable Diffusion.
-Keep the same meaning but add lighting, style, quality modifiers.
-Return ONLY the enhanced prompt text, nothing else.
+Enhance this prompt for Midjourney or Stable Diffusion.
+Add lighting, style, camera settings, and quality modifiers.
+Return ONLY the enhanced prompt, nothing else.
 
-Original prompt:
-${rawPrompt}`
+Prompt: ${rawPrompt}`
   )
 }
 
-// ─── Convert prompt tree to structured JSON ───────────────────────────────────
 export async function convertToJSON(
   chips: Array<{ title: string; prompt: string; categoryPath: string[] }>
 ): Promise<string> {
   const input = chips
-    .map(c => `Category path: ${c.categoryPath.join(' > ')}\nTitle: ${c.title}\nPrompt: ${c.prompt}`)
-    .join('\n\n---\n\n')
-
+    .map(c => `Category: ${c.categoryPath.join(' > ')}\nPrompt: ${c.prompt}`)
+    .join('\n---\n')
   const raw = await ask(
-    `Convert the following prompt items into a structured JSON object.
-Group them by their category hierarchy (the category path shows the tree structure).
-Each leaf node should have the prompt value.
-Return ONLY valid JSON, no markdown, no explanation.
+    `Convert these prompt items to a structured JSON tree grouped by category hierarchy.
+Return ONLY valid JSON, no markdown fences, no explanation.
 
-Example output:
-{
-  "person": {
-    "gender": {
-      "male": {
-        "skin": "light skin tone, smooth texture"
-      }
-    }
-  }
-}
-
-Items to convert:
+Items:
 ${input}`
   )
-
-  // Clean markdown fences if Gemini adds them
   return raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
 }
 
-// ─── Translate Arabic prompt to English ───────────────────────────────────────
 export async function translatePrompt(text: string): Promise<string> {
-  // Only translate if contains Arabic characters
   if (!/[\u0600-\u06FF]/.test(text)) return text
-
-  return ask(
-    `Translate the following Arabic text to professional English suitable for AI image generation.
-Return ONLY the English translation, nothing else.
-
-Arabic text:
-${text}`
-  )
+  return ask(`Translate to English for AI image generation. Return ONLY the translation: ${text}`)
 }
