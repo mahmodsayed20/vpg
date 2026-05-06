@@ -87,6 +87,8 @@ type OutputTab = 'plain' | 'context' | 'json' | 'gemini'
 function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Separator }) {
   const [tab, setTab]           = useState<OutputTab>('plain')
   const [geminiText, setGemini] = useState('')
+  const [geminiJson, setGeminiJson] = useState('')
+  const [showJson, setShowJson] = useState(false)
   const [geminiReady, setGeminiReady] = useState(false) // tab open but not generated yet
   const [loading, setLoading]   = useState(false)
   const [copied, setCopied]     = useState(false)
@@ -97,7 +99,7 @@ function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Se
   const current = tab === 'plain' ? plain
                 : tab === 'context' ? context
                 : tab === 'json' ? json
-                : geminiText
+                : showJson ? geminiJson : geminiText
 
   // Just opens the Gemini tab without generating
   function openGeminiTab() {
@@ -107,13 +109,18 @@ function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Se
 
   // Actually calls the API
   async function generateGemini() {
-    if (!plain.trim()) { toast.error('أضف prompts أولاً'); return }
+    if (chips.length === 0) { toast.error('أضف prompts أولاً'); return }
     setLoading(true)
     setGemini('')
     try {
-      const enhanced = await enhancePrompt(plain)
-      if (!enhanced) throw new Error('empty')
-      setGemini(enhanced)
+      const result = await enhancePrompt(chips.map(c => ({
+        title: c.title,
+        prompt: c.editedPrompt ?? c.prompt,
+        categoryPath: c.categoryPath,
+      })))
+      if (!result.aiPrompt) throw new Error('empty')
+      setGemini(result.aiPrompt)
+      setGeminiJson(result.json)
     } catch (e) {
       console.error(e)
       toast.error('حدث خطأ في Gemini')
@@ -169,17 +176,33 @@ function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Se
 
         {/* Generate button — only shows on Gemini tab */}
         {tab === 'gemini' && (
-          <button
-            onClick={generateGemini}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm"
-          >
-            {loading
-              ? <Loader2 className="w-3 h-3 animate-spin" />
-              : <Play className="w-3 h-3" />
-            }
-            {loading ? 'جاري التوليد...' : 'ولّد ✨'}
-          </button>
+          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+            {geminiText && (
+              <div className="flex gap-0.5 bg-white border border-purple-200 rounded-lg p-0.5">
+                <button onClick={() => setShowJson(false)}
+                  className={clsx('px-2 py-1 rounded text-xs font-medium transition-all',
+                    !showJson ? 'bg-purple-500 text-white' : 'text-text-muted hover:text-purple-600')}>
+                  Prompt
+                </button>
+                <button onClick={() => setShowJson(true)}
+                  className={clsx('px-2 py-1 rounded text-xs font-medium transition-all',
+                    showJson ? 'bg-purple-500 text-white' : 'text-text-muted hover:text-purple-600')}>
+                  JSON
+                </button>
+              </div>
+            )}
+            <button
+              onClick={generateGemini}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm"
+            >
+              {loading
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Play className="w-3 h-3" />
+              }
+              {loading ? 'جاري التوليد...' : 'ولّد ✨'}
+            </button>
+          </div>
         )}
 
         {/* Copy button */}
