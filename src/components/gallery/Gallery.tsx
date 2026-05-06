@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Search, Plus, Grid, LayoutGrid, X, SlidersHorizontal } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Search, Plus, Grid, LayoutGrid, X } from 'lucide-react'
 import { useStore } from '@/store'
 import { fetchItemsByCategories, fetchAllItems } from '@/lib/db'
 import { getDescendantIds } from '@/hooks/useCategoryTree'
@@ -17,22 +17,18 @@ export function Gallery() {
   const [compact, setCompact] = useState(false)
   const [localSearch, setLocalSearch] = useState(searchQuery)
   const debouncedSearch = useDebounce(localSearch, 300)
-  const loadedRef = useRef(false)
 
   useEffect(() => { setSearchQuery(debouncedSearch) }, [debouncedSearch])
 
-  // Load items when category or refreshTick changes
-  useEffect(() => {
-    load()
-  }, [activeCategoryId, refreshTick])
-
-  async function load() {
+  // Load items — depends on activeCategoryId AND categories (to resolve descendants)
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       let fetched
       if (!activeCategoryId) {
         fetched = await fetchAllItems()
       } else {
+        // Get this category + all its children/grandchildren IDs
         const ids = getDescendantIds(activeCategoryId, categories)
         fetched = await fetchItemsByCategories(ids)
       }
@@ -42,9 +38,12 @@ export function Gallery() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeCategoryId, categories, refreshTick])
 
-  const refresh = useCallback(() => load(), [activeCategoryId, categories])
+  // Re-load whenever category changes, categories list changes, or refresh triggered
+  useEffect(() => {
+    load()
+  }, [load])
 
   // Client-side search filter
   const displayed = useMemo(() => {
@@ -137,7 +136,6 @@ export function Gallery() {
       <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: '180px' }}>
 
         {loading && items.length === 0 ? (
-          // Skeleton
           <div className={clsx('grid gap-3', gridCols)}>
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="bg-bg-card rounded-xl overflow-hidden border border-bg-border">
@@ -149,7 +147,6 @@ export function Gallery() {
             ))}
           </div>
         ) : displayed.length === 0 ? (
-          // Empty
           <div className="flex flex-col items-center justify-center h-64 text-text-muted">
             <div className="text-5xl mb-4">🖼</div>
             <p className="font-medium text-text-primary">
@@ -174,7 +171,7 @@ export function Gallery() {
                 key={item.id}
                 item={item}
                 compact={compact}
-                onRefresh={refresh}
+                onRefresh={load}
               />
             ))}
           </div>
