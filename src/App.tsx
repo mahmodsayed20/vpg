@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { signOut } from 'firebase/auth'
 import { Layers, LogOut, Menu, Sun, Moon, Download } from 'lucide-react'
 import { useStore } from '@/store'
 import { useAuth } from '@/hooks/useAuth'
-import { fetchCategories } from '@/lib/db'
+import { fetchCategories, fetchAllItems } from '@/lib/db'
 import { LoginPage } from '@/pages/LoginPage'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { Gallery } from '@/components/gallery/Gallery'
@@ -14,12 +14,42 @@ import { ItemModal } from '@/components/modals/ItemModal'
 import { PreviewModal } from '@/components/modals/PreviewModal'
 import { auth } from '@/lib/firebase'
 import toast from 'react-hot-toast'
-import { fetchAllItems } from '@/lib/db'
 
 function AppShell() {
-  const { user, modal, setCategories, closeModal, refresh, items } = useStore()
+  const { user, modal, setCategories, closeModal, refresh } = useStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [theme, setTheme]             = useState<'dark' | 'light'>('dark')
+
+  // ── Resizable sidebar ──────────────────────────────────────────────────────
+  const [sidebarW, setSidebarW] = useState(220)
+  const isResizing = useRef(false)
+  const startX     = useRef(0)
+  const startW     = useRef(0)
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    isResizing.current = true
+    startX.current = e.clientX
+    startW.current = sidebarW
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [sidebarW])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isResizing.current) return
+      const delta = e.clientX - startX.current
+      const newW  = Math.min(400, Math.max(160, startW.current + delta))
+      setSidebarW(newW)
+    }
+    const onUp = () => {
+      isResizing.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
@@ -29,31 +59,24 @@ function AppShell() {
     fetchCategories().then(setCategories)
   }, [])
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        document.getElementById('gallery-search')?.focus()
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); document.getElementById('gallery-search')?.focus() }
       if (e.key === 'Escape' && modal.type) closeModal()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [modal.type])
 
-  // Export all data as JSON
   async function handleExport() {
     try {
-      const allItems = await fetchAllItems()
-      const blob = new Blob([JSON.stringify(allItems, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `vpg-backup-${new Date().toISOString().slice(0,10)}.json`
-      a.click()
+      const all  = await fetchAllItems()
+      const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url; a.download = `vpg-backup-${new Date().toISOString().slice(0,10)}.json`; a.click()
       URL.revokeObjectURL(url)
-      toast.success('تم تصدير البيانات!')
+      toast.success('تم التصدير!')
     } catch { toast.error('فشل التصدير') }
   }
 
@@ -70,10 +93,9 @@ function AppShell() {
             <span className="font-bold text-text-primary text-sm hidden sm:block">Visual Prompt Gallery</span>
           </div>
         </div>
-
         <div className="flex items-center gap-1">
           {user?.isAdmin && (
-            <button onClick={handleExport} className="p-1.5 rounded-lg hover:bg-bg-card text-text-muted hover:text-text-primary transition-colors" title="تصدير كـ JSON">
+            <button onClick={handleExport} className="p-1.5 rounded-lg hover:bg-bg-card text-text-muted hover:text-text-primary transition-colors" title="تصدير JSON">
               <Download className="w-4 h-4" />
             </button>
           )}
@@ -92,12 +114,21 @@ function AppShell() {
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
-        {/* Desktop sidebar */}
-        <aside className="hidden lg:flex flex-col w-56 xl:w-64 flex-shrink-0 border-r border-bg-border overflow-hidden">
+        {/* Desktop sidebar — resizable */}
+        <aside
+          className="hidden lg:flex flex-col flex-shrink-0 border-r border-bg-border overflow-hidden relative"
+          style={{ width: sidebarW }}
+        >
           <Sidebar />
+          {/* Resize handle */}
+          <div
+            onMouseDown={onMouseDown}
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-accent/40 transition-colors"
+            title="اسحب لتغيير العرض"
+          />
         </aside>
 
-        {/* Mobile sidebar overlay */}
+        {/* Mobile sidebar */}
         {sidebarOpen && (
           <>
             <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -117,17 +148,14 @@ function AppShell() {
       <Builder />
 
       {/* Modals */}
-      {modal.type === 'category'  && <CategoryModal />}
-      {modal.type === 'item'      && <ItemModal onSaved={refresh} />}
-      {modal.type === 'preview'   && <PreviewModal />}
+      {modal.type === 'category' && <CategoryModal />}
+      {modal.type === 'item'     && <ItemModal onSaved={refresh} />}
+      {modal.type === 'preview'  && <PreviewModal />}
 
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          className: '!bg-bg-secondary !text-text-primary !border !border-bg-border !text-sm !rounded-xl',
-          success: { iconTheme: { primary: '#6366f1', secondary: '#fff' } },
-        }}
-      />
+      <Toaster position="top-right" toastOptions={{
+        className: '!bg-bg-secondary !text-text-primary !border !border-bg-border !text-sm !rounded-xl',
+        success: { iconTheme: { primary: '#6366f1', secondary: '#fff' } },
+      }} />
     </div>
   )
 }
@@ -135,18 +163,12 @@ function AppShell() {
 export function App() {
   useAuth()
   const { user, authReady } = useStore()
-
-  if (!authReady) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="flex gap-1.5">
-          {[0,1,2].map(i => (
-            <div key={i} className="w-2 h-2 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 0.12}s` }} />
-          ))}
-        </div>
+  if (!authReady) return (
+    <div className="min-h-screen bg-bg flex items-center justify-center">
+      <div className="flex gap-1.5">
+        {[0,1,2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 0.12}s` }} />)}
       </div>
-    )
-  }
-
+    </div>
+  )
   return user ? <AppShell /> : <LoginPage />
 }
