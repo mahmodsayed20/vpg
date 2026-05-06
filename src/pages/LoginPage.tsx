@@ -14,81 +14,52 @@ export function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      if (mode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password)
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password)
-        toast.success('تم إنشاء الحساب!')
-      }
+      if (mode === 'login') await signInWithEmailAndPassword(auth, email, password)
+      else { await createUserWithEmailAndPassword(auth, email, password); toast.success('تم إنشاء الحساب!') }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'خطأ في تسجيل الدخول'
-      toast.error(msg.replace('Firebase: ', '').replace(/\(auth\/.*\)/, ''))
-    } finally {
-      setLoading(false)
-    }
+      toast.error(err instanceof Error ? err.message.replace('Firebase: ', '').replace(/\(auth\/.*\)/, '') : 'خطأ')
+    } finally { setLoading(false) }
   }
 
   async function handleGoogle() {
     setLoading(true)
-    try {
-      await signInWithPopup(auth, googleProvider)
-    } catch (err: unknown) {
-      toast.error('فشل تسجيل الدخول بجوجل')
-    } finally {
-      setLoading(false)
-    }
+    try { await signInWithPopup(auth, googleProvider) }
+    catch { toast.error('فشل تسجيل الدخول بجوجل') }
+    finally { setLoading(false) }
   }
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent/10 border border-accent/20 mb-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-accent/10 border border-accent/20 mb-4 shadow-sm">
             <Layers className="w-7 h-7 text-accent" />
           </div>
           <h1 className="text-2xl font-bold text-text-primary">Visual Prompt Gallery</h1>
           <p className="text-text-muted text-sm mt-1">مكتبتك الخاصة من الـ Prompts</p>
         </div>
 
-        <div className="bg-bg-secondary border border-bg-border rounded-2xl p-6">
-          {/* Tabs */}
-          <div className="flex bg-bg-card rounded-xl p-1 mb-5">
+        <div className="bg-white border border-bg-border rounded-2xl p-6 shadow-lg">
+          <div className="flex bg-bg-card rounded-xl p-1 mb-5 border border-bg-border">
             {(['login', 'register'] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
+              <button key={m} onClick={() => setMode(m)}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                  mode === m ? 'bg-bg-secondary text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'
-                }`}
-              >
+                  mode === m ? 'bg-white text-text-primary shadow-sm border border-bg-border' : 'text-text-muted hover:text-text-primary'
+                }`}>
                 {m === 'login' ? 'تسجيل دخول' : 'حساب جديد'}
               </button>
             ))}
           </div>
 
           <form onSubmit={handleEmail} className="space-y-3">
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
               placeholder="البريد الإلكتروني"
-              className="w-full px-3 py-2.5 bg-bg-card border border-bg-border rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent transition-colors"
-            />
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
+              className="w-full px-3 py-2.5 bg-bg-card border border-bg-border rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent transition-colors" />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
               placeholder="كلمة المرور"
-              className="w-full px-3 py-2.5 bg-bg-card border border-bg-border rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent transition-colors"
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-sm transition-colors disabled:opacity-40"
-            >
+              className="w-full px-3 py-2.5 bg-bg-card border border-bg-border rounded-xl text-text-primary placeholder-text-muted text-sm focus:outline-none focus:border-accent transition-colors" />
+            <button type="submit" disabled={loading}
+              className="w-full py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-xl text-sm transition-colors disabled:opacity-40 shadow-sm">
               {loading ? 'جاري التحميل...' : mode === 'login' ? 'دخول' : 'إنشاء حساب'}
             </button>
           </form>
@@ -99,11 +70,8 @@ export function LoginPage() {
             <div className="h-px flex-1 bg-bg-border" />
           </div>
 
-          <button
-            onClick={handleGoogle}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 py-2.5 bg-bg-card border border-bg-border hover:bg-bg-border rounded-xl text-text-primary text-sm font-medium transition-colors disabled:opacity-40"
-          >
+          <button onClick={handleGoogle} disabled={loading}
+            className="w-full flex items-center justify-center gap-3 py-2.5 bg-white border border-bg-border hover:bg-bg-card rounded-xl text-text-primary text-sm font-medium transition-colors disabled:opacity-40 shadow-sm">
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
