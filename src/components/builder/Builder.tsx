@@ -10,7 +10,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   ChevronDown, ChevronUp, X, GripVertical, Copy, Trash2,
-  Download, Wand2, Code2, AlignLeft, Check, Loader2,
+  Wand2, Code2, AlignLeft, Check, Loader2, Play, Sparkles,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import { buildPlainPrompt, buildContextPrompt, buildJSONTree } from '@/lib/buildPromptOutput'
@@ -37,7 +37,6 @@ function Chip({ chip }: { chip: BuilderChip }) {
         isDragging ? 'opacity-40 scale-95' : 'hover:border-accent/40 hover:shadow-md'
       )}
     >
-      {/* Header */}
       <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-bg-border bg-bg-card">
         <button {...attributes} {...listeners} className="cursor-grab text-text-muted hover:text-text-secondary touch-none flex-shrink-0">
           <GripVertical className="w-3.5 h-3.5" />
@@ -55,18 +54,11 @@ function Chip({ chip }: { chip: BuilderChip }) {
           <X className="w-3 h-3" />
         </button>
       </div>
-
-      {/* Body */}
       <div className="px-2.5 py-2 bg-white">
         {editing ? (
           <div className="space-y-1.5">
-            <textarea
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              rows={3}
-              autoFocus
-              className="w-full bg-bg-card border border-bg-border rounded-lg px-2 py-1.5 text-xs text-text-primary resize-none focus:outline-none focus:border-accent font-mono"
-            />
+            <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} autoFocus
+              className="w-full bg-bg-card border border-bg-border rounded-lg px-2 py-1.5 text-xs text-text-primary resize-none focus:outline-none focus:border-accent font-mono" />
             <div className="flex gap-1.5">
               <button onClick={() => { updateChipPrompt(chip.id, draft); setEditing(false) }}
                 className="flex items-center gap-1 px-2 py-1 bg-accent/10 text-accent rounded text-xs font-medium hover:bg-accent/20">
@@ -93,29 +85,38 @@ function Chip({ chip }: { chip: BuilderChip }) {
 type OutputTab = 'plain' | 'context' | 'json' | 'gemini'
 
 function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Separator }) {
-  const [tab, setTab]         = useState<OutputTab>('plain')
+  const [tab, setTab]           = useState<OutputTab>('plain')
   const [geminiText, setGemini] = useState('')
+  const [geminiReady, setGeminiReady] = useState(false) // tab open but not generated yet
   const [loading, setLoading]   = useState(false)
   const [copied, setCopied]     = useState(false)
 
   const plain   = buildPlainPrompt(chips, separator)
   const context = buildContextPrompt(chips)
   const json    = buildJSONTree(chips)
-  const current = tab === 'plain' ? plain : tab === 'context' ? context : tab === 'json' ? json : geminiText
+  const current = tab === 'plain' ? plain
+                : tab === 'context' ? context
+                : tab === 'json' ? json
+                : geminiText
 
-  async function handleGemini() {
+  // Just opens the Gemini tab without generating
+  function openGeminiTab() {
     setTab('gemini')
-    if (geminiText) return
+    setGeminiReady(true)
+  }
+
+  // Actually calls the API
+  async function generateGemini() {
     if (!plain.trim()) { toast.error('أضف prompts أولاً'); return }
     setLoading(true)
+    setGemini('')
     try {
       const enhanced = await enhancePrompt(plain)
       if (!enhanced) throw new Error('empty')
       setGemini(enhanced)
     } catch (e) {
       console.error(e)
-      toast.error('تأكد من صحة Gemini API Key')
-      setTab('plain')
+      toast.error('حدث خطأ في Gemini')
     } finally {
       setLoading(false)
     }
@@ -129,30 +130,59 @@ function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Se
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const tabs: { id: OutputTab; label: string }[] = [
-    { id: 'plain',   label: 'نص عادي' },
-    { id: 'context', label: 'بسياق' },
-    { id: 'json',    label: 'JSON شجرة' },
-    { id: 'gemini',  label: '✨ Gemini' },
+  const staticTabs: { id: OutputTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'plain',   label: 'نص عادي',   icon: <AlignLeft className="w-3 h-3" /> },
+    { id: 'context', label: 'بسياق',     icon: <AlignLeft className="w-3 h-3" /> },
+    { id: 'json',    label: 'JSON شجرة', icon: <Code2 className="w-3 h-3" /> },
   ]
 
   return (
     <div className="border-t border-bg-border mt-2 pt-2">
-      <div className="flex gap-1 mb-2 flex-wrap">
-        {tabs.map(t => (
-          <button key={t.id}
-            onClick={() => t.id === 'gemini' ? handleGemini() : setTab(t.id)}
+      <div className="flex gap-1 mb-2 flex-wrap items-center">
+        {/* Static tabs */}
+        {staticTabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
             className={clsx(
-              'px-3 py-1 rounded-lg text-xs font-medium transition-all',
+              'flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium transition-all',
               tab === t.id
                 ? 'bg-accent text-white shadow-sm'
                 : 'bg-bg-card text-text-muted hover:text-text-primary hover:bg-bg-border border border-bg-border'
-            )}
-          >
-            {t.label}
+            )}>
+            {t.icon} {t.label}
           </button>
         ))}
+
+        {/* Gemini tab — opens without generating */}
+        <button
+          onClick={openGeminiTab}
+          className={clsx(
+            'flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium transition-all',
+            tab === 'gemini'
+              ? 'bg-purple-500 text-white shadow-sm'
+              : 'bg-bg-card text-text-muted hover:text-purple-600 hover:bg-purple-50 border border-bg-border'
+          )}>
+          <Sparkles className="w-3 h-3" />
+          Gemini
+        </button>
+
         <div className="flex-1" />
+
+        {/* Generate button — only shows on Gemini tab */}
+        {tab === 'gemini' && (
+          <button
+            onClick={generateGemini}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-sm"
+          >
+            {loading
+              ? <Loader2 className="w-3 h-3 animate-spin" />
+              : <Play className="w-3 h-3" />
+            }
+            {loading ? 'جاري التوليد...' : 'ولّد ✨'}
+          </button>
+        )}
+
+        {/* Copy button */}
         <button onClick={handleCopy} disabled={!current}
           className="flex items-center gap-1 px-3 py-1 bg-accent hover:bg-accent-hover text-white rounded-lg text-xs font-bold transition-all disabled:opacity-40 shadow-sm">
           {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -160,11 +190,19 @@ function OutputPanel({ chips, separator }: { chips: BuilderChip[]; separator: Se
         </button>
       </div>
 
-      {/* Output box — bigger and non-transparent */}
+      {/* Output box */}
       <div className="bg-white border border-bg-border rounded-xl p-3 min-h-[80px] max-h-[160px] overflow-y-auto shadow-inner">
-        {loading ? (
-          <div className="flex items-center gap-2 text-text-muted text-xs">
-            <Loader2 className="w-3 h-3 animate-spin" /> جاري التحسين بـ Gemini...
+        {tab === 'gemini' && !geminiText && !loading ? (
+          <div className="flex flex-col items-center justify-center h-16 gap-2">
+            <Sparkles className="w-5 h-5 text-purple-400" />
+            <p className="text-xs text-text-muted text-center">
+              اضغط <span className="font-bold text-purple-500">ولّد ✨</span> لتحسين الـ prompt بـ Gemini
+            </p>
+          </div>
+        ) : loading ? (
+          <div className="flex items-center gap-2 text-text-muted text-xs h-16 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+            <span>جاري التحسين بـ Gemini...</span>
           </div>
         ) : (
           <pre className="text-xs text-text-secondary font-mono whitespace-pre-wrap leading-relaxed">
@@ -192,28 +230,19 @@ export function Builder() {
   }
 
   const SEP_LABELS: Record<Separator, string> = {
-    comma:     'فاصلة ,',
-    newline:   'سطر ↵',
-    paragraph: 'فقرة ¶',
+    comma: 'فاصلة ,', newline: 'سطر ↵', paragraph: 'فقرة ¶',
   }
 
   return (
-    <div id="builder-panel"
-      className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t-2 border-accent/30 shadow-2xl"
-    >
+    <div id="builder-panel" className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t-2 border-accent/30 shadow-2xl">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2.5 cursor-pointer select-none bg-bg-card border-b border-bg-border"
         onClick={() => setBuilderOpen(!builderOpen)}>
-
         <div className="w-2.5 h-2.5 rounded-full bg-accent shadow-sm shadow-accent/50" />
         <span className="text-sm font-bold text-text-primary">Prompt Builder</span>
-
         {chips.length > 0 && (
-          <span className="text-xs bg-accent text-white px-2 py-0.5 rounded-full font-bold shadow-sm">
-            {chips.length}
-          </span>
+          <span className="text-xs bg-accent text-white px-2 py-0.5 rounded-full font-bold shadow-sm">{chips.length}</span>
         )}
-
         {chips.length > 0 && (
           <div className="hidden sm:flex gap-0.5 bg-white border border-bg-border rounded-lg p-0.5 ml-1"
             onClick={e => e.stopPropagation()}>
@@ -227,16 +256,13 @@ export function Builder() {
             ))}
           </div>
         )}
-
         <div className="flex-1" />
-
         {chips.length > 0 && (
           <button onClick={e => { e.stopPropagation(); if (confirm('مسح كل الـ prompts؟')) clearChips() }}
             className="hidden sm:flex items-center gap-1 px-2 py-1 hover:bg-red-50 text-text-muted hover:text-red-500 rounded-lg text-xs transition-colors border border-transparent hover:border-red-200">
             <Trash2 className="w-3 h-3" /> مسح الكل
           </button>
         )}
-
         <button className="text-text-muted hover:text-text-primary transition-colors"
           onClick={e => { e.stopPropagation(); setBuilderOpen(!builderOpen) }}>
           {builderOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
