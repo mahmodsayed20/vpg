@@ -198,17 +198,17 @@ export const PromptCard = memo(function PromptCard({
   // - Admin with selection → toggle select
   // - Admin without selection → open preview
   function handleClick(e: React.MouseEvent) {
-    // If ctrl/shift → pass to parent for selection
+    // Ctrl/Shift → selection mode
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
       onCardClick?.(e)
       return
     }
-    // If admin has active selection → toggle
-    if (onCardClick && selected !== undefined) {
-      onCardClick(e)
+    // If already in selection mode (some cards selected) → toggle this card
+    if (selected === true) {
+      onCardClick?.(e)
       return
     }
-    // Default: open preview
+    // Default for everyone (guest + admin) → open preview modal
     setPreview(true)
   }
 
