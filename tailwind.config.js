@@ -3,25 +3,22 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
       colors: {
         bg: {
-          DEFAULT:   '#f0f2f5',
-          secondary: '#ffffff',
-          card:      '#f8f9fb',
-          border:    '#e2e5ea',
+          DEFAULT:   'var(--bg)',
+          secondary: 'var(--bg-secondary)',
+          card:      'var(--bg-card)',
+          border:    'var(--bg-border)',
         },
         accent: {
-          DEFAULT: '#4f6ef7',
-          hover:   '#3d5ce0',
-          muted:   '#4f6ef720',
+          DEFAULT: 'var(--accent)',
+          hover:   'var(--accent-hover)',
         },
         text: {
-          primary:   '#1a1d23',
-          secondary: '#4a5068',
-          muted:     '#8b92a5',
+          primary:   'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted:     'var(--text-muted)',
         },
       },
       animation: {

@@ -6,23 +6,18 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email == 'drfayz20@gmail.com';
     }
 
-    function isLoggedIn() {
-      return request.auth != null;
-    }
-
-    // Categories — anyone logged in can read, only admin can write
+    // Categories — anyone can read, only admin can write
     match /categories/{id} {
-      allow read:   if isLoggedIn();
-      allow write:  if isAdmin();
+      allow read:  if true;
+      allow write: if isAdmin();
     }
 
-    // Prompt items — anyone logged in can read, only admin can write
+    // Prompt items — anyone can read, only admin can write
     match /promptItems/{id} {
-      allow read:   if isLoggedIn();
-      allow write:  if isAdmin();
+      allow read:  if true;
+      allow write: if isAdmin();
     }
 
-    // Deny everything else
     match /{document=**} {
       allow read, write: if false;
     }

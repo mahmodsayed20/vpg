@@ -5,19 +5,23 @@ import type { PromptItem } from '@/lib/db.types'
 import type { BuilderChip, Separator, AppUser } from '@/types'
 
 interface Store {
-  // ── Auth ──────────────────────────────────────────────────────────────────
+  // Auth
   user: AppUser | null
   authReady: boolean
   setUser: (u: AppUser | null) => void
   setAuthReady: (v: boolean) => void
 
-  // ── Categories ────────────────────────────────────────────────────────────
+  // Theme
+  theme: 'light' | 'dark'
+  toggleTheme: () => void
+
+  // Categories
   categories: Category[]
   setCategories: (c: Category[]) => void
   activeCategoryId: string | null
   setActiveCategoryId: (id: string | null) => void
 
-  // ── Gallery ───────────────────────────────────────────────────────────────
+  // Gallery
   items: PromptItem[]
   setItems: (i: PromptItem[]) => void
   appendItems: (i: PromptItem[]) => void
@@ -30,12 +34,12 @@ interface Store {
   searchQuery: string
   setSearchQuery: (q: string) => void
 
-  // ── Modal ─────────────────────────────────────────────────────────────────
+  // Modal
   modal: { type: string | null; data?: unknown }
   openModal: (type: string, data?: unknown) => void
   closeModal: () => void
 
-  // ── Builder (persisted in localStorage) ──────────────────────────────────
+  // Builder (persisted)
   chips: BuilderChip[]
   addChip: (item: PromptItem) => 'added' | 'duplicate'
   removeChip: (id: string) => void
@@ -57,14 +61,20 @@ export const useStore = create<Store>()(
       setUser: user => set({ user }),
       setAuthReady: authReady => set({ authReady }),
 
+      // Theme — default light
+      theme: 'light',
+      toggleTheme: () => {
+        const next = get().theme === 'light' ? 'dark' : 'light'
+        set({ theme: next })
+        document.documentElement.classList.toggle('dark', next === 'dark')
+      },
+
       // Categories
       categories: [],
       setCategories: categories => set({ categories }),
       activeCategoryId: null,
       setActiveCategoryId: activeCategoryId => set({
-        activeCategoryId,
-        items: [],
-        hasMore: true,
+        activeCategoryId, items: [], hasMore: true,
         refreshTick: get().refreshTick + 1,
       }),
 
@@ -91,12 +101,7 @@ export const useStore = create<Store>()(
       addChip: (item) => {
         if (get().chips.some(c => c.id === item.id)) return 'duplicate'
         set(s => ({
-          chips: [...s.chips, {
-            id:           item.id,
-            title:        item.title,
-            prompt:       item.prompt,
-            categoryPath: item.categoryPath,
-          }],
+          chips: [...s.chips, { id: item.id, title: item.title, prompt: item.prompt, categoryPath: item.categoryPath }],
           builderOpen: true,
         }))
         return 'added'
@@ -113,8 +118,8 @@ export const useStore = create<Store>()(
       setBuilderOpen: builderOpen => set({ builderOpen }),
     }),
     {
-      name: 'vpg-builder',
-      partialize: s => ({ chips: s.chips, separator: s.separator, builderOpen: s.builderOpen }),
+      name: 'athar-store',
+      partialize: s => ({ chips: s.chips, separator: s.separator, builderOpen: s.builderOpen, theme: s.theme }),
     }
   )
 )
