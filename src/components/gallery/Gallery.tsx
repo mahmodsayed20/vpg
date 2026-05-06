@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Search, Plus, Grid, LayoutGrid, X, Trash2, CheckSquare, SlidersHorizontal } from 'lucide-react'
+import { Search, Plus, X, Trash2, CheckSquare, SlidersHorizontal, FolderInput, ChevronRight } from 'lucide-react'
 import { useStore } from '@/store'
-import { fetchItemsByCategories, fetchAllItems, deleteItem } from '@/lib/db'
+import { fetchItemsByCategories, fetchAllItems, deleteItem, updateItem } from '@/lib/db'
 import { getDescendantIds } from '@/hooks/useCategoryTree'
+import { buildCategoryPath } from '@/lib/buildCategoryPath'
 import { useDebounce } from '@/hooks/useDebounce'
 import { PromptCard } from './PromptCard'
 import { clsx } from 'clsx'
 import toast from 'react-hot-toast'
 import type { PromptItem } from '@/lib/db.types'
 
-// Card size: maps slider value (1–5) to image height + grid cols
 const SIZE_CONFIG = [
   { height: 80,  cols: 'grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12' },
   { height: 120, cols: 'grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10' },
@@ -25,14 +25,17 @@ export function Gallery() {
     refreshTick, searchQuery, setSearchQuery, addChip,
   } = useStore()
 
-  const [localSearch, setLocalSearch]     = useState(searchQuery)
-  const debouncedSearch                   = useDebounce(localSearch, 300)
-  const [sizeIdx, setSizeIdx]             = useState(2) // default = middle
+  const [localSearch, setLocalSearch] = useState(searchQuery)
+  const debouncedSearch               = useDebounce(localSearch, 300)
+  const [sizeIdx, setSizeIdx]         = useState(2)
 
   // Multi-select
-  const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set())
-  const lastSelectedIdx                   = useRef<number>(-1)
-  const [ctxMenu, setCtxMenu]             = useState<{ x: number; y: number } | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const lastSelectedIdx               = useRef<number>(-1)
+
+  // Context menu
+  const [ctxMenu, setCtxMenu]           = useState<{ x: number; y: number } | null>(null)
+  const [showMoveMenu, setShowMoveMenu] = useState(false)
 
   useEffect(() => { setSearchQuery(debouncedSearch) }, [debouncedSearch])
 
@@ -47,6 +50,8 @@ export function Gallery() {
         const ids = getDescendantIds(activeCategoryId, categories)
         fetched = await fetchItemsByCategories(ids)
       }
+      // ── Sort alphabetically by title ──
+      fetched.sort((a, b) => a.title.localeCompare(b.title, 'ar'))
       setItems(fetched)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
@@ -55,14 +60,16 @@ export function Gallery() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSelectedIds(new Set()); setCtxMenu(null) } }
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setSelectedIds(new Set()); setCtxMenu(null); setShowMoveMenu(false) }
+    }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [])
 
   useEffect(() => {
     if (!ctxMenu) return
-    const h = () => setCtxMenu(null)
+    const h = () => { setCtxMenu(null); setShowMoveMenu(false) }
     window.addEventListener('click', h)
     return () => window.removeEventListener('click', h)
   }, [ctxMenu])
@@ -77,7 +84,7 @@ export function Gallery() {
     )
   }, [items, debouncedSearch])
 
-  // Selection handlers
+  // ── Selection ──────────────────────────────────────────────────────────────
   function handleCardClick(item: PromptItem, idx: number, e: React.MouseEvent) {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
@@ -89,25 +96,25 @@ export function Gallery() {
       e.preventDefault()
       const s = Math.min(lastSelectedIdx.current, idx)
       const en = Math.max(lastSelectedIdx.current, idx)
-      setSelectedIds(prev => { const n = new Set(prev); displayed.slice(s, en+1).forEach(i => n.add(i.id)); return n })
+      setSelectedIds(prev => { const n = new Set(prev); displayed.slice(s, en + 1).forEach(i => n.add(i.id)); return n })
       return
     }
-    // Normal click with selection active = toggle selection
     if (selectedIds.size > 0) {
       setSelectedIds(prev => { const n = new Set(prev); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n })
       lastSelectedIdx.current = idx
     }
-    // If no selection = do nothing (+ button handles add to builder)
   }
 
   function handleRightClick(e: React.MouseEvent, item: PromptItem, idx: number) {
     e.preventDefault()
     if (!selectedIds.has(item.id)) { setSelectedIds(new Set([item.id])); lastSelectedIdx.current = idx }
     setCtxMenu({ x: e.clientX, y: e.clientY })
+    setShowMoveMenu(false)
   }
 
   const selectedItems = displayed.filter(i => selectedIds.has(i.id))
 
+  // ── Bulk actions ───────────────────────────────────────────────────────────
   async function handleBulkDelete() {
     if (!user?.isAdmin || !confirm(`حذف ${selectedIds.size} عنصر؟`)) return
     await Promise.all(selectedItems.map(i => deleteItem(i.id)))
@@ -122,16 +129,41 @@ export function Gallery() {
     setCtxMenu(null)
   }
 
+  async function handleMoveTo(targetCategoryId: string) {
+    if (!user?.isAdmin) return
+    const categoryPath = buildCategoryPath(targetCategoryId, categories)
+    try {
+      await Promise.all(
+        selectedItems.map(item =>
+          updateItem(item.id, {
+            ...item,
+            categoryId:   targetCategoryId,
+            categoryPath,
+          })
+        )
+      )
+      const targetName = categories.find(c => c.id === targetCategoryId)?.name ?? ''
+      toast.success(`تم نقل ${selectedIds.size} عنصر إلى "${targetName}"`)
+      setSelectedIds(new Set())
+      setCtxMenu(null)
+      setShowMoveMenu(false)
+      load()
+    } catch {
+      toast.error('حدث خطأ في النقل')
+    }
+  }
+
   const { height: imgHeight, cols: gridCols } = SIZE_CONFIG[sizeIdx]
   const activeCategory = categories.find(c => c.id === activeCategoryId)
+
+  // Sorted categories for move menu
+  const sortedCategories = [...categories].sort((a, b) => a.name.localeCompare(b.name, 'ar'))
 
   return (
     <div className="flex flex-col h-full min-h-0">
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-bg-border bg-bg flex-shrink-0 flex-wrap gap-y-2">
-
-        {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
           <input id="gallery-search" value={localSearch} onChange={e => setLocalSearch(e.target.value)}
@@ -145,7 +177,9 @@ export function Gallery() {
         </div>
 
         {activeCategory && (
-          <span className="hidden md:block text-sm text-text-muted">/ <span className="text-text-primary font-medium">{activeCategory.name}</span></span>
+          <span className="hidden md:block text-sm text-text-muted">
+            / <span className="text-text-primary font-medium">{activeCategory.name}</span>
+          </span>
         )}
 
         <div className="flex-1" />
@@ -173,16 +207,9 @@ export function Gallery() {
         {/* Size slider */}
         <div className="flex items-center gap-2 px-2 py-1 bg-bg-card border border-bg-border rounded-xl">
           <SlidersHorizontal className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
-          <input
-            type="range"
-            min={0}
-            max={4}
-            step={1}
-            value={sizeIdx}
+          <input type="range" min={0} max={4} step={1} value={sizeIdx}
             onChange={e => setSizeIdx(Number(e.target.value))}
-            className="w-20 h-1.5 accent-accent cursor-pointer"
-            title="حجم الكروت"
-          />
+            className="w-20 h-1.5 accent-accent cursor-pointer" title="حجم الكروت" />
           <span className="text-xs text-text-muted font-mono w-4 text-center">{sizeIdx + 1}</span>
         </div>
 
@@ -210,7 +237,7 @@ export function Gallery() {
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: '180px' }}>
         {loading && items.length === 0 ? (
-          <div className={clsx('grid gap-3', gridCols)}>
+          <div className={clsx('grid gap-2', gridCols)}>
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="bg-bg-card rounded-xl overflow-hidden border border-bg-border">
                 <div className="animate-skeleton bg-bg-border" style={{ height: imgHeight }} />
@@ -245,37 +272,85 @@ export function Gallery() {
         )}
       </div>
 
-      {/* Context Menu */}
+      {/* ── Context Menu ── */}
       {ctxMenu && (
         <div
-          className="fixed z-50 bg-white border border-bg-border rounded-xl shadow-2xl py-1.5 min-w-[180px] animate-fade-in"
+          className="fixed z-50 bg-white border border-bg-border rounded-xl shadow-2xl py-1.5 min-w-[200px] animate-fade-in"
           style={{
-            left: Math.min(ctxMenu.x, window.innerWidth - 200),
-            top:  Math.min(ctxMenu.y, window.innerHeight - 220),
+            left: Math.min(ctxMenu.x, window.innerWidth - 220),
+            top:  Math.min(ctxMenu.y, window.innerHeight - 280),
           }}
           onClick={e => e.stopPropagation()}
         >
+          {/* Header */}
           <div className="px-3 py-1.5 border-b border-bg-border mb-1">
             <span className="text-xs font-semibold text-text-muted">{selectedIds.size} عنصر محدد</span>
           </div>
+
+          {/* Add to builder */}
           <button onClick={handleBulkAdd}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card">
-            <Plus className="w-3.5 h-3.5 text-accent" /> إضافة للبانيل
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card transition-colors">
+            <Plus className="w-3.5 h-3.5 text-accent flex-shrink-0" />
+            إضافة للبانيل
           </button>
+
+          {/* Move to category — admin only */}
+          {user?.isAdmin && (
+            <div className="relative">
+              <button
+                onClick={e => { e.stopPropagation(); setShowMoveMenu(v => !v) }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card transition-colors"
+              >
+                <FolderInput className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                <span className="flex-1 text-right">نقل إلى قسم</span>
+                <ChevronRight className="w-3.5 h-3.5 text-text-muted" />
+              </button>
+
+              {/* Submenu */}
+              {showMoveMenu && (
+                <div
+                  className="absolute left-full top-0 ml-1 bg-white border border-bg-border rounded-xl shadow-2xl py-1.5 min-w-[180px] max-h-64 overflow-y-auto animate-fade-in"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="px-3 py-1.5 border-b border-bg-border mb-1">
+                    <span className="text-xs font-semibold text-text-muted">اختر القسم</span>
+                  </div>
+                  {sortedCategories.map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => handleMoveTo(cat.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-accent/10 hover:text-accent transition-colors text-right"
+                    >
+                      <span className="text-text-muted text-xs">📁</span>
+                      <span className="truncate">{cat.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Select all / deselect */}
           <button onClick={() => { setSelectedIds(new Set(displayed.map(i => i.id))); setCtxMenu(null) }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card">
-            <CheckSquare className="w-3.5 h-3.5 text-text-muted" /> تحديد الكل
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card transition-colors">
+            <CheckSquare className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+            تحديد الكل
           </button>
+
           <button onClick={() => { setSelectedIds(new Set()); setCtxMenu(null) }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card">
-            <X className="w-3.5 h-3.5 text-text-muted" /> إلغاء التحديد
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-text-primary hover:bg-bg-card transition-colors">
+            <X className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+            إلغاء التحديد
           </button>
+
+          {/* Delete — admin only */}
           {user?.isAdmin && (
             <>
               <div className="border-t border-bg-border my-1" />
               <button onClick={handleBulkDelete}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50">
-                <Trash2 className="w-3.5 h-3.5" /> حذف ({selectedIds.size})
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
+                حذف ({selectedIds.size})
               </button>
             </>
           )}
