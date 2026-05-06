@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
-import { auth, ADMIN_EMAIL } from '@/lib/firebase'
+import { auth } from '@/lib/firebase'
 import { useStore } from '@/store'
 
 export function useAuth() {
@@ -14,7 +14,7 @@ export function useAuth() {
           email:       user.email,
           displayName: user.displayName,
           photoURL:    user.photoURL,
-          isAdmin:     user.email === ADMIN_EMAIL,
+          isAdmin:     true, // Anyone who logs in via /admin is an admin
         })
       } else {
         setUser(null)
