@@ -9,8 +9,9 @@ import type { PromptItem } from '@/lib/db.types'
 // ─── Card Preview Modal (for guests) ─────────────────────────────────────────
 function CardPreview({ item, onClose }: { item: PromptItem; onClose: () => void }) {
   const { addChip } = useStore()
-  const [copied, setCopied] = useState(false)
-  const [added, setAdded]   = useState(false)
+  const [copied, setCopied]   = useState(false)
+  const [added, setAdded]     = useState(false)
+  const [lightbox, setLightbox] = useState(false)
 
   function handleCopy() {
     navigator.clipboard.writeText(item.prompt)
@@ -45,13 +46,43 @@ function CardPreview({ item, onClose }: { item: PromptItem; onClose: () => void 
           <X className="w-4 h-4" />
         </button>
 
-        {/* Image */}
+        {/* Image — click to open lightbox */}
         {item.imageUrl && (
-          <div className="w-full max-h-72 overflow-hidden" style={{ background: 'var(--bg)' }}>
+          <div
+            className="w-full max-h-72 overflow-hidden cursor-zoom-in"
+            style={{ background: 'var(--bg)' }}
+            onClick={e => { e.stopPropagation(); setLightbox(true) }}
+            title="اضغط لتكبير الصورة"
+          >
             <img
               src={item.imageUrl}
               alt={item.title}
-              className={clsx('w-full max-h-72', item.displayMode === 'cover' ? 'object-cover' : 'object-contain p-4')}
+              className={clsx('w-full max-h-72 transition-transform hover:scale-105 duration-300', item.displayMode === 'cover' ? 'object-cover' : 'object-contain p-4')}
+            />
+            <div className="absolute top-3 left-3 px-2 py-1 rounded-lg text-xs text-white opacity-0 hover:opacity-100 transition-opacity flex items-center gap-1"
+              style={{ background: 'rgba(0,0,0,0.6)' }}>
+              <ZoomIn className="w-3 h-3" /> تكبير
+            </div>
+          </div>
+        )}
+
+        {/* Lightbox */}
+        {lightbox && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90"
+            onClick={() => setLightbox(false)}
+          >
+            <button
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+              onClick={() => setLightbox(false)}
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={item.imageUrl}
+              alt={item.title}
+              className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+              onClick={e => e.stopPropagation()}
             />
           </div>
         )}
@@ -81,6 +112,29 @@ function CardPreview({ item, onClose }: { item: PromptItem; onClose: () => void 
                   {t}
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* Lightbox */}
+          {lightbox && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+              style={{ background: 'rgba(0,0,0,0.92)' }}
+              onClick={() => setLightbox(false)}
+            >
+              <button
+                className="absolute top-4 right-4 p-2 rounded-full text-white"
+                style={{ background: 'rgba(255,255,255,0.15)' }}
+                onClick={() => setLightbox(false)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <img
+                src={item.imageUrl}
+                alt={item.title}
+                className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                onClick={e => e.stopPropagation()}
+              />
             </div>
           )}
 
