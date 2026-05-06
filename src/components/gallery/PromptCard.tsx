@@ -1,3 +1,4 @@
+// v2.1 - preview with object-contain
 import { memo, useState } from 'react'
 import { Plus, Edit2, Trash2, Copy, Check, X, ZoomIn } from 'lucide-react'
 import { useStore } from '@/store'
