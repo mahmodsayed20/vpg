@@ -21,14 +21,13 @@ async function ask(system: string, user: string): Promise<string> {
           model,
           messages:    [{ role: 'system', content: system }, { role: 'user', content: user }],
           max_tokens:  600,
-          temperature: 0.1, // Very low = less creativity = more faithful
+          temperature: 0.0, // Zero creativity — pure cleanup only
         }),
       })
       if (!res.ok) { console.warn(`${model} failed ${res.status}`); continue }
       const data = await res.json()
       const text = data.choices?.[0]?.message?.content
       if (!text) continue
-      console.log(`✅ Model: ${model}`)
       return text.trim()
     } catch (e) {
       console.warn(`${model} error:`, e)
@@ -37,64 +36,63 @@ async function ask(system: string, user: string): Promise<string> {
   throw new Error('All models failed')
 }
 
+// Logical order for the final prompt
+const KEY_ORDER = [
+  'style', 'subject', 'camera', 'lighting',
+  'environment', 'materials', 'people', 'mood', 'quality',
+]
+
 export async function enhancePrompt(
   chips: Array<{ title: string; prompt: string; categoryPath: string[] }>
 ): Promise<{ json: string; aiPrompt: string }> {
 
-  // Step 1: Build clean JSON — deduplicate values
-  const structured: Record<string, string[]> = {}
+  // Step 1: Build clean JSON — deduplicate values per category
+  const grouped: Record<string, Set<string>> = {}
   for (const chip of chips) {
-    const key = (chip.categoryPath[0] ?? 'general').toLowerCase().replace(/\s+/g, '_')
-    if (!structured[key]) structured[key] = []
-    // Avoid duplicate prompts in same category
-    if (!structured[key].includes(chip.prompt)) {
-      structured[key].push(chip.prompt)
-    }
+    const key = (chip.categoryPath[0] ?? 'general')
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+    if (!grouped[key]) grouped[key] = new Set()
+    grouped[key].add(chip.prompt.trim())
   }
 
-  // Convert arrays to strings
   const cleanJson: Record<string, string> = {}
-  for (const [k, v] of Object.entries(structured)) {
-    cleanJson[k] = v.join(', ')
+  for (const [k, v] of Object.entries(grouped)) {
+    cleanJson[k] = Array.from(v).join(', ')
   }
 
   const rawJson = JSON.stringify(cleanJson, null, 2)
 
-  // Step 2: Gemini improves ONLY what exists — strict rules
-  const system = `You are an AI image prompt specialist. Your ONLY job is to professionally rephrase and improve existing values.
+  // Step 2: Ask AI to ONLY translate + sort — nothing else
+  const system = `You are a JSON translator and organizer. Your ONLY tasks are:
+1. Translate any non-English values to professional English
+2. Remove duplicate words within the same value
+3. Return the JSON with keys in this order when present: ${KEY_ORDER.join(', ')}
+4. Keep all original keys and their meaning — do NOT add, remove, or change anything else
+5. Return ONLY valid JSON — no markdown, no explanation`
 
-ABSOLUTE RULES — breaking any rule is failure:
-1. Return ONLY a valid JSON object. No markdown, no explanation, no text outside JSON.
-2. Keep ALL original keys exactly as written.
-3. NEVER add elements not present in the input (no lens types, no rendering styles, no camera settings unless already in input).
-4. ONLY rephrase/improve existing values with precise professional terminology.
-5. Remove duplicate words within the same value.
-6. If a value is already professional, keep it as-is.
-7. You MAY add ONE "quality" key at the end with appropriate render quality terms.`
-
-  const user = `Improve ONLY the existing values. Do NOT add new concepts. Return ONLY JSON:
+  const user = `Translate non-English to English and sort keys. Return ONLY JSON:
 
 ${rawJson}`
 
-  let aiJson = rawJson
+  let finalJson = rawJson
   try {
     const raw = await ask(system, user)
     const cleaned = raw
       .replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
       .replace(/^[^{]*({[\s\S]*})[^}]*$/, '$1')
-    JSON.parse(cleaned)
-    aiJson = cleaned
+    JSON.parse(cleaned) // validate
+    finalJson = cleaned
   } catch (e) {
-    console.error('Parse failed, using raw JSON', e)
-    aiJson = rawJson
+    console.error('Parse failed, using raw', e)
+    finalJson = rawJson
   }
 
   // Step 3: Build flat prompt in logical order
-  const ORDER = ['style', 'subject', 'camera', 'lighting', 'environment', 'materials', 'people', 'mood', 'quality', 'render_style']
-  const parsed: Record<string, string> = JSON.parse(aiJson)
+  const parsed: Record<string, string> = JSON.parse(finalJson)
   const ordered = [
-    ...ORDER.filter(k => parsed[k]).map(k => parsed[k]),
-    ...Object.entries(parsed).filter(([k]) => !ORDER.includes(k)).map(([, v]) => v),
+    ...KEY_ORDER.filter(k => parsed[k]).map(k => parsed[k]),
+    ...Object.entries(parsed).filter(([k]) => !KEY_ORDER.includes(k)).map(([, v]) => v),
   ]
 
   return {
@@ -106,7 +104,7 @@ ${rawJson}`
 export async function translatePrompt(text: string): Promise<string> {
   if (!/[\u0600-\u06FF]/.test(text)) return text
   return ask(
-    'Translate Arabic to professional English for AI image generation. Return ONLY the English translation.',
+    'Translate Arabic to professional English. Return ONLY the English translation.',
     text
   )
 }
