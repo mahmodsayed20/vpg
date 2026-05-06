@@ -1,17 +1,16 @@
-// Uses OpenRouter as proxy to access Gemini for free
-const OPENROUTER_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const KEY = import.meta.env.VITE_GEMINI_API_KEY
 
 async function ask(prompt: string): Promise<string> {
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
+      'Authorization': `Bearer ${KEY}`,
       'HTTP-Referer':  'https://vpg-woad.vercel.app',
       'X-Title':       'Visual Prompt Gallery',
     },
     body: JSON.stringify({
-      model:    'google/gemini-2.0-flash-exp:free',
+      model:    'google/gemini-flash-1.5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1500,
     }),
@@ -47,10 +46,7 @@ export async function convertToJSON(
     .map(c => `Category: ${c.categoryPath.join(' > ')}\nPrompt: ${c.prompt}`)
     .join('\n---\n')
   const raw = await ask(
-    `Convert these prompt items to a structured JSON tree grouped by category hierarchy.
-Return ONLY valid JSON, no markdown fences, no explanation.
-
-Items:
+    `Convert these to structured JSON tree grouped by category. Return ONLY valid JSON:
 ${input}`
   )
   return raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
@@ -58,5 +54,5 @@ ${input}`
 
 export async function translatePrompt(text: string): Promise<string> {
   if (!/[\u0600-\u06FF]/.test(text)) return text
-  return ask(`Translate to English for AI image generation. Return ONLY the translation: ${text}`)
+  return ask(`Translate to English for AI image generation. Return ONLY translation: ${text}`)
 }
