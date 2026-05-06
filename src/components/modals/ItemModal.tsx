@@ -87,7 +87,25 @@ export function ItemModal({ onSaved }: { onSaved: () => void }) {
     }
   }
 
-  const sortedCats = [...categories].sort((a, b) => a.name.localeCompare(b.name))
+// Build ordered list with parent > children hierarchy
+const buildOrderedCats = () => {
+  const roots = categories.filter(c => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder)
+  const result: { cat: typeof categories[0]; depth: number }[] = []
+  
+  function addNode(catId: string, depth: number) {
+    const cat = categories.find(c => c.id === catId)
+    if (!cat) return
+    result.push({ cat, depth })
+    categories
+      .filter(c => c.parentId === catId)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .forEach(child => addNode(child.id, depth + 1))
+  }
+  
+  roots.forEach(r => addNode(r.id, 0))
+  return result
+}
+const orderedCats = buildOrderedCats()
 
   return (
     <Modal title={isEdit ? 'تعديل العنصر' : 'إضافة عنصر جديد'} maxWidth="max-w-2xl">
@@ -151,7 +169,11 @@ export function ItemModal({ onSaved }: { onSaved: () => void }) {
             <label className="block text-sm font-medium text-text-secondary mb-1.5">القسم *</label>
             <select value={catId} onChange={e => setCatId(e.target.value)} required className="w-full px-3 py-2.5 bg-bg-card border border-bg-border rounded-xl text-text-primary text-sm focus:outline-none focus:border-accent">
               <option value="">اختر قسماً...</option>
-              {sortedCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+{orderedCats.map(({ cat, depth }) => (
+  <option key={cat.id} value={cat.id}>
+    {depth > 0 ? `${'　'.repeat(depth)}↳ ${cat.name}` : cat.name}
+  </option>
+))}
             </select>
           </div>
 
