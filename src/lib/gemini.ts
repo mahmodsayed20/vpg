@@ -11,7 +11,7 @@ async function ask(prompt: string): Promise<string> {
       'X-Title':       'Visual Prompt Gallery',
     },
     body: JSON.stringify({
-      model:    'google/gemini-flash-1.5-8b',
+      model:    'google/gemini-2.0-flash-exp:free',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1500,
     }),
