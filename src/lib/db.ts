@@ -6,8 +6,6 @@ import {
 import { db } from './firebase'
 import type { Category, PromptItem, PromptItemFormData } from './db.types'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-// All data is stored in a single shared collection (admin-only writes via security rules)
 const catCol  = () => collection(db, 'categories')
 const itemCol = () => collection(db, 'promptItems')
 
@@ -35,7 +33,6 @@ export async function updateCategory(id: string, data: { name?: string; parentId
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  // Move children to root level
   const childQ = query(catCol(), where('parentId', '==', id))
   const children = await getDocs(childQ)
   const batch = writeBatch(db)
@@ -44,52 +41,33 @@ export async function deleteCategory(id: string): Promise<void> {
   await batch.commit()
 }
 
-export async function reorderCategories(orderedIds: string[]): Promise<void> {
-  const batch = writeBatch(db)
-  orderedIds.forEach((id, i) =>
-    batch.update(doc(db, 'categories', id), { sortOrder: i, updatedAt: serverTimestamp() })
-  )
-  await batch.commit()
-}
-
 // ─── Prompt Items ─────────────────────────────────────────────────────────────
-export async function fetchItems(opts: {
-  categoryIds?: string[]
-  cursor?: DocumentSnapshot | null
-  pageSize?: number
-}): Promise<{ items: PromptItem[]; lastDoc: DocumentSnapshot | null }> {
-  const { categoryIds, cursor, pageSize = 36 } = opts
 
-  let q = query(itemCol(), orderBy('sortOrder', 'asc'), limit(pageSize))
-
-  if (categoryIds && categoryIds.length === 1) {
-    q = query(itemCol(), where('categoryId', '==', categoryIds[0]), orderBy('sortOrder', 'asc'), limit(pageSize))
-  }
-
-  if (cursor) q = query(q, startAfter(cursor))
-
-  const snap = await getDocs(q)
-  return {
-    items:   snap.docs.map(d => ({ id: d.id, ...d.data() } as PromptItem)),
-    lastDoc: snap.docs[snap.docs.length - 1] ?? null,
-  }
+export async function fetchAllItems(): Promise<PromptItem[]> {
+  // Simple query — no composite index needed
+  const snap = await getDocs(query(itemCol(), orderBy('sortOrder', 'asc')))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as PromptItem))
 }
 
 export async function fetchItemsByCategories(categoryIds: string[]): Promise<PromptItem[]> {
   if (categoryIds.length === 0) return []
+  
   const all: PromptItem[] = []
-  // Firestore 'in' supports max 30 items — chunk if needed
+  
+  // Fetch by categoryId WITHOUT orderBy to avoid composite index requirement
+  // Then sort client-side
   for (let i = 0; i < categoryIds.length; i += 30) {
     const chunk = categoryIds.slice(i, i + 30)
-    const snap = await getDocs(query(itemCol(), where('categoryId', 'in', chunk), orderBy('sortOrder', 'asc')))
+    const snap = await getDocs(
+      query(itemCol(), where('categoryId', 'in', chunk))
+    )
     all.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as PromptItem)))
   }
+  
+  // Sort client-side by sortOrder
+  all.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+  
   return all
-}
-
-export async function fetchAllItems(): Promise<PromptItem[]> {
-  const snap = await getDocs(query(itemCol(), orderBy('sortOrder', 'asc')))
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as PromptItem))
 }
 
 export async function createItem(data: PromptItemFormData): Promise<string> {
@@ -126,12 +104,18 @@ export async function duplicateItem(item: PromptItem): Promise<string> {
   const all  = await getDocs(itemCol())
   const maxS = all.docs.reduce((m, d) => Math.max(m, d.data().sortOrder ?? 0), 0)
   const ref  = await addDoc(itemCol(), {
-    ...item,
-    id:        undefined,
-    title:     item.title + ' (copy)',
-    sortOrder: maxS + 1,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    title:        item.title + ' (copy)',
+    prompt:       item.prompt,
+    imageUrl:     item.imageUrl,
+    imagePath:    item.imagePath,
+    categoryId:   item.categoryId,
+    categoryPath: item.categoryPath,
+    tags:         [...item.tags],
+    notes:        item.notes,
+    displayMode:  item.displayMode,
+    sortOrder:    maxS + 1,
+    createdAt:    serverTimestamp(),
+    updatedAt:    serverTimestamp(),
   })
   return ref.id
 }
