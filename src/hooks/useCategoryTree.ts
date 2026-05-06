@@ -36,7 +36,7 @@ function buildTree(cats: Category[], countMap: Map<string, number>): CategoryNod
   }
 
   const sort = (nodes: CategoryNode[]) => {
-    nodes.sort((a, b) => a.sortOrder - b.sortOrder)
+    nodes.sort((a, b) => a.name.localeCompare(b.name, 'ar'))
     nodes.forEach(n => sort(n.children))
   }
   sort(roots)
